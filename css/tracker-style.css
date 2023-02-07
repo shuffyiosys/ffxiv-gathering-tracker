@@ -1,0 +1,74 @@
+body {
+	max-height: 100vh;
+}
+
+.card {
+	box-shadow: 2px 2px 5px #888;
+	background: #FFF;
+	margin-bottom: 10px;
+}
+
+.card-title {
+	padding: 5px;
+	border-bottom: 1px solid #DDD;
+}
+
+.card-title p {
+	font-size: 1.5em;
+	text-align: right;
+}
+
+.card-content {
+	padding: 5px;
+}
+
+.card-content p {
+	text-align: justify;
+	margin-bottom: 1em;
+}
+
+.header {
+	display: flex;
+	flex-wrap: nowrap;
+	height: 2.5em;
+	border-bottom: 1px darkgray solid;
+	padding: 6px;
+}
+
+.header > div {
+	width: fit-content;
+	margin-right: 2em;
+}
+
+.grid-container {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	height: calc(100vh - (2.5em));
+}
+
+#node-locations {
+	overflow-y: auto;
+	padding: 10px;
+}
+
+.node-selection > div.card-content > button, .node-queue-item > div.card-content > button {
+	float: right;
+}
+
+.node-material {
+	margin-bottom: 0.25em;
+}
+
+#node-queue > div{
+	margin-bottom: 3em;
+}
+
+#node-queue-container {
+	border-right: 1px darkgray solid;
+	overflow-y: auto;
+	padding: 10px;
+}
+
+#next-node {
+	margin-bottom: 2em;
+}
