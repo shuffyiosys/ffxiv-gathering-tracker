@@ -67,7 +67,7 @@ const GATHERING_NODES = {
 	Labyrinthos_BL4:     new CollectableLocation('Folklore Labyrinthos',      28, 11,  4, 'The Archeion', "Logging",
 	                        ['Bayberry']),
 	Thavnair_BL8:        new CollectableLocation('Folklore Thavnair',         25, 21,  8, 'Palaka\'s Stand', "Harvesting",
-	                        ['Golden Cocoon', 'Thavnarian Corn']),
+	                        ['Golden Cocoon', 'Thavnairian Corn']),
 	Thavnair_BL12:       new CollectableLocation('Folklore Thavnair',         29, 26, 12, 'Palaka\'s Stand', "Logging",
 	                        ['Haritaki']),
 	Elpis_BL2:           new CollectableLocation('Folklore Elpis',            10, 30,  2, 'The Twelve Wonders', "Logging",
