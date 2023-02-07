@@ -29,13 +29,6 @@ function initTracker() {
 		$(`#node-locations`).append(cardHtml);
 	}
 
-	if (localStorage.getItem('alarmEnabled')) {
-		if (localStorage.getItem('alarmEnabled') === "true") {
-			alarmEnabled = true;
-			$('#alarm-enable-checkbox').prop('checked', true);
-		}
-	}
-
 	$(`.node-selection > .card-content > button`).click(ev => {
 		const nodeName = $(ev.target).attr('dataName');
 		addNode(nodeName);
@@ -47,8 +40,17 @@ function initTracker() {
 		localStorage.setItem('alarmEnabled', alarmEnabled);
 	});
 
-	let savedNodes = localStorage.getItem('selectedNodes').split(',');
-	savedNodes.forEach(node => addNode(node));
+	if (localStorage.getItem('alarmEnabled')) {
+		if (localStorage.getItem('alarmEnabled') === "true") {
+			alarmEnabled = true;
+			$('#alarm-enable-checkbox').prop('checked', true);
+		}
+	}
+
+	if (localStorage.getItem('selectedNodes')) {
+		let savedNodes = localStorage.getItem('selectedNodes').split(',');
+		savedNodes.forEach(node => addNode(node));
+	}
 
 	if (Notification.permission !== 'denied') {
 		Notification.requestPermission();
@@ -140,10 +142,13 @@ function processTick() {
 			nodeNames.push(GATHERING_NODES[nodeName].region);
 		})
 		const message = `${eorzeaHours + 1}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
-		let notification = new Notification(message);
-		let audioNotify = new Audio('./media/audio/FFXIV_Incoming_Tell_1.mp3');
-		setTimeout(() => {notification.close()}, 10000);
-		audioNotify.play();
+
+		if (Notification.permission === "granted") {
+			let notification = new Notification(message);
+			let audioNotify = new Audio('./media/audio/FFXIV_Incoming_Tell_1.mp3');
+			setTimeout(() => {notification.close()}, 10000);
+			audioNotify.play();
+		}
 		console.log(message);
 	}
 	else if (eorzeaHours % 2 == 0 && eorzeaMinutes == 0) {
