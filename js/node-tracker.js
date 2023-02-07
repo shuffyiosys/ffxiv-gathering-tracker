@@ -36,6 +36,9 @@ function initTracker() {
 	});
 
 	$('#alarm-enable-checkbox').change(ev => {
+		if (Notification.permission !== 'denied') {
+			Notification.requestPermission().then((permission) => console.log(`Permission: ${permission}`));
+		}
 		alarmEnabled = $(ev.target).is(':checked');
 		localStorage.setItem('alarmEnabled', alarmEnabled);
 	});
@@ -50,10 +53,6 @@ function initTracker() {
 	if (localStorage.getItem('selectedNodes')) {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
 		savedNodes.forEach(node => addNode(node));
-	}
-
-	if (Notification.permission !== 'denied') {
-		Notification.requestPermission().then((permission) => console.log(`Permission: ${permission}`));
 	}
 
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
