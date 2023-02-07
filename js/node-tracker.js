@@ -53,7 +53,7 @@ function initTracker() {
 	}
 
 	if (Notification.permission !== 'denied') {
-		Notification.requestPermission();
+		Notification.requestPermission().then((permission) => console.log(`Permission: ${permission}`));
 	}
 
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
