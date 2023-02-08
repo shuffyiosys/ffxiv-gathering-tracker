@@ -6,6 +6,9 @@ let trackedNodes = {};
 let trackerTimer = null;
 let alarmEnabled = false;
 
+let rtTimer = null;
+let rtAlarmSeconds = 0;
+
 const EORZEA_MINUTE_MS = 2916;
 const EORZEA_MINUTE_SCALE = (2 + 11/12);
 
@@ -24,16 +27,12 @@ function initTracker() {
 		nextNodeHour = parseInt($($(`#next-node`).children()[0]).attr('id').substr(5));
 	}
 
+	let cardIdx = 0;
 	for(const nodeName in GATHERING_NODES) {
-		const cardHtml = generateNodeCard(nodeName, '', 'node-selection', 'Add', 'btn-primary');
+		const cardHtml = generateNodeCard(nodeName, cardIdx++);
 		$(`#node-locations`).append(cardHtml);
 	}
-
-	$(`.node-selection > .card-content > button`).click(ev => {
-		const nodeName = $(ev.target).attr('dataName');
-		addNode(nodeName);
-		saveData();
-	});
+	$('.node-card > div.card-content > button').click(enqueueNode);
 
 	$('#alarm-enable-checkbox').change(ev => {
 		if (Notification.permission !== 'denied') {
@@ -52,13 +51,18 @@ function initTracker() {
 
 	if (localStorage.getItem('selectedNodes')) {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
-		savedNodes.forEach(node => addNode(node));
+		savedNodes.forEach(nodeName => { 
+			const event = {target: $(`#${nodeName}-card > div.card-content > button`)[0]};
+			enqueueNode(event);
+		});
 	}
 
+	rtAlarmSeconds = parseInt(((eorzeaHours + 1) % 2 * 60 + eorzeaMinutes) * EORZEA_MINUTE_SCALE);
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
+	rtTimer = setInterval(processRtTimer, 1000);
 }
 
-function generateNodeCard(nodeName, cardId='', cardClass='', buttonText='', buttonType='') {
+function generateNodeCard(nodeName, idx=0) {
 	const node = GATHERING_NODES[nodeName];
 	let materialList = '';
 	node.materials.forEach(material => {
@@ -74,36 +78,66 @@ function generateNodeCard(nodeName, cardId='', cardClass='', buttonText='', butt
 	});
 
 	const gatheringIcon = `<img src="./media/img/${node.nodeType.toLowerCase()}.png" alt="${node.nodeType} icon">`;
-	const id = (cardId) ? `id=${cardId}` : '';
-	return `<div ${id} class="${cardClass} card">
+	return `<div id="${nodeName}-card" class="card node-card" index="${idx}" dataName="${nodeName}">
 		<div class="card-title">
 			${gatheringIcon} ${node.region} (X: ${node.xCoord}/Y: ${node.yCoord}) | Time: ${node.time}:00 | Closest Aetheryte: ${node.aetheryte}<br>
 		</div>
 		<div class="card-content">
 			${materialList}
-			<button class="btn ${buttonType} btn-sm" dataName="${nodeName}">${buttonText}</button>
+			<button class="btn btn-primary btn-sm">Add</button>
 		</div>
 	</div>`
 }
 
-function addNode(nodeName) {
-	const node = GATHERING_NODES[nodeName];
-	trackedNodes[node.time].add(nodeName);
-	const cardHtml = generateNodeCard(nodeName, nodeName, 'node-queue-item', 'Remove', 'btn-danger')
-	$(`#hour-${node.time}`).append(cardHtml);
-
-	$(`#${nodeName} > .card-content > button`).click(ev => {
-		const nodeName = $(ev.target).attr('dataName');
-		removeNode(nodeName);
-		saveData();
-	})
+function moveCard(cardId, listId) {
+	const nodeCard = $(`#${cardId}`);
+	nodeCard.detach();
+	$(`#${listId}`).append(nodeCard[0]);
 }
 
-function removeNode(nodeName) {
+function enqueueNode(event) {
+	const nodeCard = $(event.target).parent().parent();
+	const nodeName = nodeCard.attr('dataName');
+	const gatheringNode = GATHERING_NODES[nodeName];
+	trackedNodes[gatheringNode.time].add(nodeName);
+
+	// Handle the UI part here.
+	moveCard(nodeCard.attr('id'), `hour-${gatheringNode.time}`);
+	$(event.target).html(`Remove`);
+	$(event.target).removeClass('btn-primary');
+	$(event.target).addClass('btn-danger');
+
+	$(event.target).off('click', enqueueNode);
+	$(event.target).on('click', dequeueNode);
+	saveData();
+}
+
+function dequeueNode(event) {
+	const nodeCard = $(event.target).parent().parent();
+	const nodeName = nodeCard.attr('dataName');
 	const hour = GATHERING_NODES[nodeName].time;
 	trackedNodes[hour].delete(nodeName);
 
-	$(`#${nodeName}`).remove();
+	const locationCards = $(`#node-locations`).children().toArray();
+	let targetCard = null;
+
+	for(let i = 1; i < locationCards.length; i++) {
+		const card = locationCards[i];
+		if(parseInt($(card).attr('index')) < parseInt(nodeCard.attr('index'))) { continue; }
+		targetCard = card;
+		break;
+	}
+	
+	nodeCard.detach();
+	if(targetCard === null) { $(`#node-locations`).append(nodeCard[0]); }
+	else { nodeCard.insertBefore(targetCard); }
+	$(event.target).html(`Add`);
+	$(event.target).removeClass('btn-danger');
+	$(event.target).addClass('btn-primary');
+
+	$(event.target).off('click', dequeueNode);
+	$(event.target).on('click', enqueueNode);
+	saveData();
 }
 
 function shiftQueue() {
@@ -135,24 +169,32 @@ function processTick() {
 	}
 	writeTime();
 
-	if (alarmEnabled && eorzeaHours % 2 == 1 && eorzeaMinutes === 58) {
+	if (alarmEnabled && eorzeaHours % 2 == 1 && eorzeaMinutes === 55) {
 		let nodeNames = [];
 		trackedNodes[eorzeaHours + 1].forEach(nodeName => {
 			nodeNames.push(GATHERING_NODES[nodeName].region);
 		})
-		const message = `${eorzeaHours + 1}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
+		if (nodeNames.length > 0) {
+			const message = `${eorzeaHours + 1}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
 
-		if (Notification.permission === "granted") {
-			let notification = new Notification(message);
-			let audioNotify = new Audio('./media/audio/FFXIV_Incoming_Tell_1.mp3');
-			setTimeout(() => {notification.close()}, 10000);
-			audioNotify.play();
+			if (Notification.permission === "granted") {
+				let notification = new Notification(message);
+				let audioNotify = new Audio('./media/audio/FFXIV_Incoming_Tell_1.mp3');
+				setTimeout(() => {notification.close()}, 10000);
+				audioNotify.play();
+			}
+			console.log(message);
 		}
-		console.log(message);
 	}
 	else if (eorzeaHours % 2 == 0 && eorzeaMinutes == 0) {
+		rtAlarmSeconds = parseInt(120 * EORZEA_MINUTE_SCALE);
 		shiftQueue();
 	}
+}
+
+function processRtTimer() {
+	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
+	rtAlarmSeconds --;
 }
 
 function saveData() {

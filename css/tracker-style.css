@@ -51,7 +51,7 @@ body {
 	padding: 10px;
 }
 
-.node-selection > div.card-content > button, .node-queue-item > div.card-content > button {
+.node-card > div.card-content > button {
 	float: right;
 }
 
