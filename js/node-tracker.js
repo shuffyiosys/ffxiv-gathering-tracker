@@ -42,6 +42,15 @@ function initTracker() {
 		localStorage.setItem('alarmEnabled', alarmEnabled);
 	});
 
+	$('#removeAllButton').click(() => {
+		let savedNodes = localStorage.getItem('selectedNodes').split(',');
+		savedNodes.forEach(nodeName => { 
+			const event = {target: $(`#${nodeName}-card > div.card-content > button`)[0]};
+			dequeueNode(event);
+		});
+		saveData();
+	})
+
 	if (localStorage.getItem('alarmEnabled')) {
 		if (localStorage.getItem('alarmEnabled') === "true") {
 			alarmEnabled = true;
@@ -57,7 +66,9 @@ function initTracker() {
 		});
 	}
 
-	rtAlarmSeconds = parseInt(((eorzeaHours + 1) % 2 * 60 + eorzeaMinutes) * EORZEA_MINUTE_SCALE);
+	rtAlarmSeconds = parseInt(((eorzeaHours + 1) % 2 * 60 + (60 - eorzeaMinutes)) * EORZEA_MINUTE_SCALE) - 2;
+	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
+	
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
 	rtTimer = setInterval(processRtTimer, 1000);
 }
@@ -152,7 +163,7 @@ function shiftQueue() {
 
 function writeTime() {
 	const displayHours = (eorzeaHours === 0) ? 12 : eorzeaHours;
-	$('#eorzean-clock').html(`Current Time: ${displayHours}:${String(eorzeaMinutes).padStart(2, "0")} ${middayPeriod}`);
+	$('#eorzean-clock').html(`${displayHours}:${String(eorzeaMinutes).padStart(2, "0")} ${middayPeriod}`);
 }
 
 function processTick() {
@@ -174,6 +185,7 @@ function processTick() {
 		trackedNodes[eorzeaHours + 1].forEach(nodeName => {
 			nodeNames.push(GATHERING_NODES[nodeName].region);
 		})
+		console.log(nodeNames)
 		if (nodeNames.length > 0) {
 			const message = `${eorzeaHours + 1}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
 
@@ -194,7 +206,7 @@ function processTick() {
 
 function processRtTimer() {
 	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
-	rtAlarmSeconds --;
+	if (rtAlarmSeconds >= 0) { rtAlarmSeconds --; }
 }
 
 function saveData() {

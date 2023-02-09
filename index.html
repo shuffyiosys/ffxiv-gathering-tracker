@@ -19,8 +19,8 @@
 </head>
 <body>
 	<div class="header">
-		<div id="eorzean-clock"></div>
-		<div id="rt-timer"></div>
+		<div>Eorzea Time: <span id="eorzean-clock">12:00</span></div>
+		<div>Time left: <span id="rt-timer">5:50</span></div>
 		<div class="form-check form-switch" title="Sets an alarm for 2 Eorzean minutes before the node pops">
 			<input class="form-check-input" type="checkbox" id="alarm-enable-checkbox">
 			<label class="form-check-label" for="alarm-enable-checkbox">Enable Alarm</label>
@@ -30,7 +30,7 @@
 	<div class="grid-container">
 		<div id="node-queue-container">
 			<h2>Node Queue</h2>
-			<p>Current Node(s)</p>
+			<p>Current Node(s)	<button id="removeAllButton" class="btn btn-danger btn-sm" style="float: right;">Remove all</button></p>
 			<div id="next-node">
 				<div id="hour-12"></div>
 			</div>
