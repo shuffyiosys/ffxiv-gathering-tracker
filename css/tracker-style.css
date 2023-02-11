@@ -2,27 +2,32 @@ body {
 	max-height: 100vh;
 }
 
-.card {
+/* Card CSS ******************************************************************/
+.tracker-card {
 	box-shadow: 2px 2px 5px #888;
 	background: #FFF;
-	margin-bottom: 10px;
+	border-radius: 0.5rem;
+
+	height: fit-content;
+	margin-bottom: 1rem;
 }
 
-.card-title {
+.tracker-card-title {
 	padding: 5px;
-	border-bottom: 1px solid #DDD;
+	background: #DDD;
+	border-radius: 0.5rem 0.5rem 0 0;
 }
 
-.card-title p {
+.tracker-card-title p {
 	font-size: 1.5em;
 	text-align: right;
 }
 
-.card-content {
+.tracker-card-content {
 	padding: 5px;
 }
 
-.card-content p {
+.tracker-card-content p {
 	text-align: justify;
 	margin-bottom: 1em;
 }
@@ -51,8 +56,8 @@ body {
 	padding: 10px;
 }
 
-.node-card > div.card-content > button {
-	float: right;
+div.tracker-card-button {
+	text-align: right;
 }
 
 .node-material {

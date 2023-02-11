@@ -18,13 +18,13 @@ function initTracker() {
 	}
 	processTick();
 
-	let nextNodeHour = parseInt($($(`#next-node`).children()[0]).attr('id').substr(5));
+	let nextNodeHour = parseInt($($(`#current-node`).children()[0]).attr('id').substr(5));
 	if (nextNodeHour === 12) {
 		nextNodeHour = 0;
 	}
 	while (nextNodeHour < (eorzeaHours - 1)) {
 		shiftQueue();
-		nextNodeHour = parseInt($($(`#next-node`).children()[0]).attr('id').substr(5));
+		nextNodeHour = parseInt($($(`#current-node`).children()[0]).attr('id').substr(5));
 	}
 
 	let cardIdx = 0;
@@ -32,7 +32,7 @@ function initTracker() {
 		const cardHtml = generateNodeCard(nodeName, cardIdx++);
 		$(`#node-locations`).append(cardHtml);
 	}
-	$('.node-card > div.card-content > button').click(enqueueNode);
+	$('.node-card > div.tracker-card-content > button').click(enqueueNode);
 
 	$('#alarm-enable-checkbox').change(ev => {
 		if (Notification.permission !== 'denied') {
@@ -45,7 +45,7 @@ function initTracker() {
 	$('#removeAllButton').click(() => {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
 		savedNodes.forEach(nodeName => { 
-			const event = {target: $(`#${nodeName}-card > div.card-content > button`)[0]};
+			const event = {target: $(`#${nodeName}-card > div.tracker-card-content > button`)[0]};
 			dequeueNode(event);
 		});
 		saveData();
@@ -61,11 +61,12 @@ function initTracker() {
 	if (localStorage.getItem('selectedNodes')) {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
 		savedNodes.forEach(nodeName => { 
-			const event = {target: $(`#${nodeName}-card > div.card-content > button`)[0]};
+			const event = {target: $(`#${nodeName}-card > div.tracker-card-content > button`)[0]};
 			enqueueNode(event);
 		});
 	}
 
+	// rtAlarmSeconds = timeUntilNextNode();
 	rtAlarmSeconds = parseInt(((eorzeaHours + 1) % 2 * 60 + (60 - eorzeaMinutes)) * EORZEA_MINUTE_SCALE) - 2;
 	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
 	
@@ -84,20 +85,27 @@ function generateNodeCard(nodeName, idx=0) {
 			let scripText = COLLECTABLES[material].type;
 			let scripIconName = scripText.toLowerCase().replaceAll(' ', '_')
 			rewardHtml = `<img src="./media/img/${scripIconName}_gatherers_scrip.png" alt="${scripText} Gatherer's Scrip icon" height="32px"> x${COLLECTABLES[material].amount} | `
-		} 
+		}
+		else if (material in LEGENDARY_MATS) {
+			rewardHtml = `Perception: ${LEGENDARY_MATS[material].perception} | `;
+		}
 		materialList += `<div class="node-material">${rewardHtml}${materialHtml}</div>`
 	});
 
 	const gatheringIcon = `<img src="./media/img/${node.nodeType.toLowerCase()}.png" alt="${node.nodeType} icon">`;
-	return `<div id="${nodeName}-card" class="card node-card" index="${idx}" dataName="${nodeName}">
-		<div class="card-title">
-			${gatheringIcon} ${node.region} (X: ${node.xCoord}/Y: ${node.yCoord}) | Time: ${node.time}:00 | Closest Aetheryte: ${node.aetheryte}<br>
-		</div>
-		<div class="card-content">
-			${materialList}
-			<button class="btn btn-primary btn-sm">Add</button>
-		</div>
-	</div>`
+	return `
+		<div id="${nodeName}-card" class="tracker-card node-card" index="${idx}" dataName="${nodeName}">
+			<div class="tracker-card-title">
+				${gatheringIcon} ${node.region} (X: ${node.xCoord}/Y: ${node.yCoord}) | Time: ${node.time}:00
+			</div>
+			<div class="tracker-card-content">
+				Closest Aetheryte: ${node.aetheryte}
+				${materialList}
+			</div>
+			<div class="tracker-card-content tracker-card-button">
+				<button class="btn btn-primary btn-sm">Add</button>
+			</div>
+		</div>`
 }
 
 function moveCard(cardId, listId) {
@@ -152,13 +160,13 @@ function dequeueNode(event) {
 }
 
 function shiftQueue() {
-	const outgoingNode = $(`#next-node`).children()[0];
+	const outgoingNode = $(`#current-node`).children()[0];
 	$(outgoingNode).detach();
 	$(`#node-queue`).append(outgoingNode);
 
 	let incomingNode = $(`#node-queue`).children()[0];
 	$(incomingNode).detach();
-	$(`#next-node`).append(incomingNode);
+	$(`#current-node`).append(incomingNode);
 }
 
 function writeTime() {
@@ -180,12 +188,28 @@ function processTick() {
 	}
 	writeTime();
 
-	if (alarmEnabled && eorzeaHours % 2 == 1 && eorzeaMinutes === 55) {
+	if (eorzeaHours % 2 == 0 && eorzeaMinutes == 0) {
+		rtAlarmSeconds = timeUntilNextNode() * EORZEA_MINUTE_SCALE;
+		shiftQueue();
+	}
+}
+
+function timeUntilNextNode() {
+	const nextQHour = parseInt($('#node-queue').children()[0].id.substr(5));
+	let currentQHour = parseInt($('#current-node').children()[0].id.substr(5));
+	currentQHour = (currentQHour == 12) ? 0 : currentQHour;
+	return (nextQHour - currentQHour) * 60;
+}
+
+function processRtTimer() {
+	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
+	if (rtAlarmSeconds >= 0) { rtAlarmSeconds --; }
+
+	if (alarmEnabled && rtAlarmSeconds === 10) {
 		let nodeNames = [];
 		trackedNodes[eorzeaHours + 1].forEach(nodeName => {
 			nodeNames.push(GATHERING_NODES[nodeName].region);
 		})
-		console.log(nodeNames)
 		if (nodeNames.length > 0) {
 			const message = `${eorzeaHours + 1}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
 
@@ -198,15 +222,6 @@ function processTick() {
 			console.log(message);
 		}
 	}
-	else if (eorzeaHours % 2 == 0 && eorzeaMinutes == 0) {
-		rtAlarmSeconds = parseInt(120 * EORZEA_MINUTE_SCALE);
-		shiftQueue();
-	}
-}
-
-function processRtTimer() {
-	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
-	if (rtAlarmSeconds >= 0) { rtAlarmSeconds --; }
 }
 
 function saveData() {
