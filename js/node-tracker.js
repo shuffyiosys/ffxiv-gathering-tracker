@@ -1,6 +1,5 @@
 'use strict'
 let eorzeaMinutes = 0;
-let eorzeaHours = 12;
 let middayPeriod = 'AM'
 let trackedNodes = {};
 let trackerTimer = null;
@@ -11,6 +10,8 @@ let rtAlarmSeconds = 0;
 
 const EORZEA_MINUTE_MS = 2916;
 const EORZEA_MINUTE_SCALE = (2 + 11/12);
+const MINUTES_IN_DAY = 1440;
+const BUTTON_SELECTOR = `div.tracker-card-footer > div:nth-child(2) > button`;
 
 function initTracker() {
 	for(let hour = 2; hour <= 12; hour += 2) {
@@ -18,6 +19,7 @@ function initTracker() {
 	}
 	processTick();
 
+	const eorzeaHours = getEorzeaHours(); 
 	let nextNodeHour = parseInt($($(`#current-node`).children()[0]).attr('id').substr(5));
 	if (nextNodeHour === 12) {
 		nextNodeHour = 0;
@@ -32,7 +34,7 @@ function initTracker() {
 		const cardHtml = generateNodeCard(nodeName, cardIdx++);
 		$(`#node-locations`).append(cardHtml);
 	}
-	$('.node-card > div.tracker-card-content > button').click(enqueueNode);
+	$(`.node-card > ${BUTTON_SELECTOR}`).click(enqueueNode);
 
 	$('#alarm-enable-checkbox').change(ev => {
 		if (Notification.permission !== 'denied') {
@@ -45,7 +47,7 @@ function initTracker() {
 	$('#removeAllButton').click(() => {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
 		savedNodes.forEach(nodeName => { 
-			const event = {target: $(`#${nodeName}-card > div.tracker-card-content > button`)[0]};
+			const event = {target: $(`#${nodeName}-card > ${BUTTON_SELECTOR}`)[0]};
 			dequeueNode(event);
 		});
 		saveData();
@@ -61,13 +63,12 @@ function initTracker() {
 	if (localStorage.getItem('selectedNodes')) {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
 		savedNodes.forEach(nodeName => { 
-			const event = {target: $(`#${nodeName}-card > div.tracker-card-content > button`)[0]};
+			const event = {target: $(`#${nodeName}-card > ${BUTTON_SELECTOR}`)[0]};
 			enqueueNode(event);
 		});
 	}
 
-	// rtAlarmSeconds = timeUntilNextNode();
-	rtAlarmSeconds = parseInt(((eorzeaHours + 1) % 2 * 60 + (60 - eorzeaMinutes)) * EORZEA_MINUTE_SCALE) - 2;
+	rtAlarmSeconds = parseInt((120 - eorzeaMinutes % 120) * EORZEA_MINUTE_SCALE) - 2;
 	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
 	
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
@@ -99,13 +100,21 @@ function generateNodeCard(nodeName, idx=0) {
 				${gatheringIcon} ${node.region} (X: ${node.xCoord}/Y: ${node.yCoord}) | Time: ${node.time}:00
 			</div>
 			<div class="tracker-card-content">
-				Closest Aetheryte: ${node.aetheryte}
 				${materialList}
 			</div>
-			<div class="tracker-card-content tracker-card-button">
-				<button class="btn btn-primary btn-sm">Add</button>
+			<div class="tracker-card-footer">
+				<div>
+				Closest Aetheryte: ${node.aetheryte}
+				</div>
+				<div>
+					<button class="btn btn-primary btn-sm">Add</button>
+				</div>
 			</div>
 		</div>`
+}
+
+function getCardButton(nodeName) {
+	return $(`div#${nodeName} > div.tracker-card-footer > div:nth-child(2) > button`)
 }
 
 function moveCard(cardId, listId) {
@@ -115,7 +124,7 @@ function moveCard(cardId, listId) {
 }
 
 function enqueueNode(event) {
-	const nodeCard = $(event.target).parent().parent();
+	const nodeCard = $(event.target).parent().parent().parent();
 	const nodeName = nodeCard.attr('dataName');
 	const gatheringNode = GATHERING_NODES[nodeName];
 	trackedNodes[gatheringNode.time].add(nodeName);
@@ -132,7 +141,7 @@ function enqueueNode(event) {
 }
 
 function dequeueNode(event) {
-	const nodeCard = $(event.target).parent().parent();
+	const nodeCard = $(event.target).parent().parent().parent();
 	const nodeName = nodeCard.attr('dataName');
 	const hour = GATHERING_NODES[nodeName].time;
 	trackedNodes[hour].delete(nodeName);
@@ -170,35 +179,42 @@ function shiftQueue() {
 }
 
 function writeTime() {
-	const displayHours = (eorzeaHours === 0) ? 12 : eorzeaHours;
-	$('#eorzean-clock').html(`${displayHours}:${String(eorzeaMinutes).padStart(2, "0")} ${middayPeriod}`);
+	const eorzeaHours = getEorzeaHours();
+	$('#eorzean-clock').html(`${eorzeaHours}:${String(eorzeaMinutes % 60).padStart(2, "0")} ${middayPeriod}`);
 }
 
 function processTick() {
-	const currentTime = Date.now() / 1000 / EORZEA_MINUTE_SCALE;
-	eorzeaHours = parseInt(currentTime / 60) % 24;
-	eorzeaMinutes = parseInt(currentTime % 60);
+	eorzeaMinutes = parseInt(Date.now() / 1000 / EORZEA_MINUTE_SCALE) % MINUTES_IN_DAY;
 
-	if (eorzeaHours > 11) {
+	if (eorzeaMinutes > (MINUTES_IN_DAY / 2)) {
 		middayPeriod = 'PM';
-		eorzeaHours -= 12;
 	}
 	else {
 		middayPeriod = 'AM';
 	}
 	writeTime();
 
-	if (eorzeaHours % 2 == 0 && eorzeaMinutes == 0) {
+	if (eorzeaMinutes % 120 == 0) {
 		rtAlarmSeconds = timeUntilNextNode() * EORZEA_MINUTE_SCALE;
 		shiftQueue();
 	}
 }
 
 function timeUntilNextNode() {
-	const nextQHour = parseInt($('#node-queue').children()[0].id.substr(5));
+	let nextQItem = null;
+	for(let i = 0; i < $('#node-queue').children().length; i++) {
+		if ($('#node-queue').children()[i].children.length > 0) {
+			nextQItem = $('#node-queue').children()[i];
+			break;
+		}
+	}
+
+	if (nextQItem === null) {
+		return -1;
+	}
+	let nextQHour = parseInt(nextQItem.id.substr(5));
 	let currentQHour = parseInt($('#current-node').children()[0].id.substr(5));
-	currentQHour = (currentQHour == 12) ? 0 : currentQHour;
-	return (nextQHour - currentQHour) * 60;
+	return (nextQHour - currentQHour - 1) * 60;
 }
 
 function processRtTimer() {
@@ -207,6 +223,7 @@ function processRtTimer() {
 
 	if (alarmEnabled && rtAlarmSeconds === 10) {
 		let nodeNames = [];
+		const eorzeaHours = getEorzeaHours();
 		trackedNodes[eorzeaHours + 1].forEach(nodeName => {
 			nodeNames.push(GATHERING_NODES[nodeName].region);
 		})
@@ -215,7 +232,7 @@ function processRtTimer() {
 
 			if (Notification.permission === "granted") {
 				let notification = new Notification(message);
-				let audioNotify = new Audio('./media/audio/FFXIV_Incoming_Tell_1.mp3');
+				let audioNotify = new Audio('./media/audio/FFXIV_Linkshell_Transmission.mp3');
 				setTimeout(() => {notification.close()}, 10000);
 				audioNotify.play();
 			}
@@ -230,6 +247,10 @@ function saveData() {
 		trackedNodes[time].forEach(node => nodes.push(node));
 	}
 	localStorage.setItem('selectedNodes', nodes);
+}
+
+function getEorzeaHours() {
+	return parseInt(eorzeaMinutes / 60) % 12;
 }
 
 initTracker();
