@@ -73,7 +73,7 @@ body {
 	margin-bottom: 0.25em;
 }
 
-#node-queue > div{
+#node-queue > div.spacer{
 	margin-bottom: 3em;
 }
 

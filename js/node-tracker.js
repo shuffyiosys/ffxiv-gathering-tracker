@@ -1,12 +1,13 @@
 'use strict'
 let eorzeaMinutes = 0;
-let middayPeriod = 'AM'
 let trackedNodes = {};
 let trackerTimer = null;
 let alarmEnabled = false;
 
 let rtTimer = null;
 let rtAlarmSeconds = 0;
+let rtExpected = 0;
+const RT_INTERVAL = 1000;
 
 const EORZEA_MINUTE_MS = 2916;
 const EORZEA_MINUTE_SCALE = (2 + 11/12);
@@ -18,22 +19,10 @@ function initTracker() {
 		trackedNodes[hour] = new Set();
 	}
 	processTick();
+	alignQueueToEorzeaTime();
+	buildNodeList();
 
-	const eorzeaHours = getEorzeaHours(); 
-	let nextNodeHour = parseInt($($(`#current-node`).children()[0]).attr('id').substr(5));
-	if (nextNodeHour === 12) {
-		nextNodeHour = 0;
-	}
-	while (nextNodeHour < (eorzeaHours - 1)) {
-		shiftQueue();
-		nextNodeHour = parseInt($($(`#current-node`).children()[0]).attr('id').substr(5));
-	}
-
-	let cardIdx = 0;
-	for(const nodeName in GATHERING_NODES) {
-		const cardHtml = generateNodeCard(nodeName, cardIdx++);
-		$(`#node-locations`).append(cardHtml);
-	}
+	$(`#alarm-enable-checkbox`).prop("checked", false);
 	$(`.node-card > ${BUTTON_SELECTOR}`).click(enqueueNode);
 
 	$('#alarm-enable-checkbox').change(ev => {
@@ -41,7 +30,10 @@ function initTracker() {
 			Notification.requestPermission().then((permission) => console.log(`Permission: ${permission}`));
 		}
 		alarmEnabled = $(ev.target).is(':checked');
-		localStorage.setItem('alarmEnabled', alarmEnabled);
+
+		if (alarmEnabled === true && rtAlarmSeconds <= 10) {
+			triggerAlarm();
+		}
 	});
 
 	$('#removeAllButton').click(() => {
@@ -53,13 +45,6 @@ function initTracker() {
 		saveData();
 	})
 
-	if (localStorage.getItem('alarmEnabled')) {
-		if (localStorage.getItem('alarmEnabled') === "true") {
-			alarmEnabled = true;
-			$('#alarm-enable-checkbox').prop('checked', true);
-		}
-	}
-
 	if (localStorage.getItem('selectedNodes')) {
 		let savedNodes = localStorage.getItem('selectedNodes').split(',');
 		savedNodes.forEach(nodeName => { 
@@ -68,11 +53,24 @@ function initTracker() {
 		});
 	}
 
-	rtAlarmSeconds = parseInt((120 - eorzeaMinutes % 120) * EORZEA_MINUTE_SCALE) - 2;
-	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
+	rtAlarmSeconds = getRtSecondsToNextNode();
+	displayRtAlarmTime();
 	
+	rtExpected = Date.now() + RT_INTERVAL;
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
-	rtTimer = setInterval(processRtTimer, 1000);
+	rtTimer = setTimeout(processRtTimer, RT_INTERVAL);
+}
+
+/**********************************************************************************************************************
+ * GUI functions
+ */
+function buildNodeList() {
+	let cardIdx = 0;
+	for(const nodeName in GATHERING_NODES) {
+		const cardHtml = generateNodeCard(nodeName, cardIdx++);
+		$(`#node-locations`).append(cardHtml);
+	}
+
 }
 
 function generateNodeCard(nodeName, idx=0) {
@@ -113,62 +111,61 @@ function generateNodeCard(nodeName, idx=0) {
 		</div>`
 }
 
-function getCardButton(nodeName) {
-	return $(`div#${nodeName} > div.tracker-card-footer > div:nth-child(2) > button`)
-}
-
-function moveCard(cardId, listId) {
-	const nodeCard = $(`#${cardId}`);
+function moveCardToQueue(nodeCard, queueSlotId, buttonTarget) {
 	nodeCard.detach();
-	$(`#${listId}`).append(nodeCard[0]);
+	$(`#${queueSlotId}`).append(nodeCard[0]);
+	$(`#${queueSlotId}`).addClass('spacer')
+	$(buttonTarget).html(`Remove`);
+	$(buttonTarget).removeClass('btn-primary');
+	$(buttonTarget).addClass('btn-danger');
+
+	$(buttonTarget).off('click', enqueueNode);
+	$(buttonTarget).on('click', dequeueNode);
 }
 
-function enqueueNode(event) {
-	const nodeCard = $(event.target).parent().parent().parent();
-	const nodeName = nodeCard.attr('dataName');
-	const gatheringNode = GATHERING_NODES[nodeName];
-	trackedNodes[gatheringNode.time].add(nodeName);
-
-	// Handle the UI part here.
-	moveCard(nodeCard.attr('id'), `hour-${gatheringNode.time}`);
-	$(event.target).html(`Remove`);
-	$(event.target).removeClass('btn-primary');
-	$(event.target).addClass('btn-danger');
-
-	$(event.target).off('click', enqueueNode);
-	$(event.target).on('click', dequeueNode);
-	saveData();
-}
-
-function dequeueNode(event) {
-	const nodeCard = $(event.target).parent().parent().parent();
-	const nodeName = nodeCard.attr('dataName');
-	const hour = GATHERING_NODES[nodeName].time;
-	trackedNodes[hour].delete(nodeName);
-
+function moveCardToList(nodeCard, buttonTarget) {
 	const locationCards = $(`#node-locations`).children().toArray();
-	let targetCard = null;
-
-	for(let i = 1; i < locationCards.length; i++) {
+	let i = 1;
+	for(; i < locationCards.length; i++) {
 		const card = locationCards[i];
-		if(parseInt($(card).attr('index')) < parseInt(nodeCard.attr('index'))) { continue; }
-		targetCard = card;
-		break;
+		if(parseInt($(card).attr('index')) > parseInt(nodeCard.attr('index'))) { 
+			break; 
+		}
 	}
-	
+
+	const targetCard = locationCards[i];
+	const queueSlot = nodeCard.parent();
 	nodeCard.detach();
+	if(queueSlot.children().length === 0) { queueSlot.removeClass('spacer'); }
 	if(targetCard === null) { $(`#node-locations`).append(nodeCard[0]); }
 	else { nodeCard.insertBefore(targetCard); }
-	$(event.target).html(`Add`);
-	$(event.target).removeClass('btn-danger');
-	$(event.target).addClass('btn-primary');
 
-	$(event.target).off('click', dequeueNode);
-	$(event.target).on('click', enqueueNode);
-	saveData();
+	$(buttonTarget).html(`Add`);
+	$(buttonTarget).removeClass('btn-danger');
+	$(buttonTarget).addClass('btn-primary');
+
+	$(buttonTarget).off('click', dequeueNode);
+	$(buttonTarget).on('click', enqueueNode);
 }
 
-function shiftQueue() {
+function displayEorzeaTime() {
+	const middayPeriod = (eorzeaMinutes > (MINUTES_IN_DAY / 2)) ? 'PM' : 'AM';
+	const eorzeaHours = getEorzeaHour();
+	$('#eorzean-clock').html(`${eorzeaHours}:${String(eorzeaMinutes % 60).padStart(2, "0")} ${middayPeriod}`);
+}
+
+function displayRtAlarmTime() {
+	if (rtAlarmSeconds < -1) {
+		$(`#rt-timer`).html(`N/A`);
+	}
+	else {
+		const minute = parseInt(rtAlarmSeconds/60);
+		const second = rtAlarmSeconds % 60;
+		$(`#rt-timer`).html(`${minute}:${String(second).padStart(2, "0")}`);
+	}
+}
+
+function rotateQueueDisplay() {
 	const outgoingNode = $(`#current-node`).children()[0];
 	$(outgoingNode).detach();
 	$(`#node-queue`).append(outgoingNode);
@@ -178,69 +175,150 @@ function shiftQueue() {
 	$(`#current-node`).append(incomingNode);
 }
 
-function writeTime() {
-	const eorzeaHours = getEorzeaHours();
-	$('#eorzean-clock').html(`${eorzeaHours}:${String(eorzeaMinutes % 60).padStart(2, "0")} ${middayPeriod}`);
-}
-
-function processTick() {
-	eorzeaMinutes = parseInt(Date.now() / 1000 / EORZEA_MINUTE_SCALE) % MINUTES_IN_DAY;
-
-	if (eorzeaMinutes > (MINUTES_IN_DAY / 2)) {
-		middayPeriod = 'PM';
+function alignQueueToEorzeaTime() {
+	function getCurrentNodeHour() {
+		let hour = parseInt($($(`#current-node`).children()[0]).attr('id').substr(5));
+		return hour;
 	}
-	else {
-		middayPeriod = 'AM';
-	}
-	writeTime();
 
-	if (eorzeaMinutes % 120 == 0) {
-		rtAlarmSeconds = timeUntilNextNode() * EORZEA_MINUTE_SCALE;
-		shiftQueue();
+	let targetHour = parseInt(getEorzeaHour() / 2) * 2;
+	targetHour = (targetHour === 0) ? 12 : targetHour;
+	let currentHour = getCurrentNodeHour();
+	while (currentHour != targetHour) {
+		rotateQueueDisplay();
+		currentHour = getCurrentNodeHour();
 	}
 }
 
-function timeUntilNextNode() {
-	let nextQItem = null;
+function getNextCardHour() {
+	let nextCardHour = parseInt(getEorzeaHour() / 2) * 2;
 	for(let i = 0; i < $('#node-queue').children().length; i++) {
 		if ($('#node-queue').children()[i].children.length > 0) {
-			nextQItem = $('#node-queue').children()[i];
+			nextCardHour = parseInt($('#node-queue').children()[i].id.substr(5));
 			break;
 		}
 	}
-
-	if (nextQItem === null) {
-		return -1;
-	}
-	let nextQHour = parseInt(nextQItem.id.substr(5));
-	let currentQHour = parseInt($('#current-node').children()[0].id.substr(5));
-	return (nextQHour - currentQHour - 1) * 60;
+	return nextCardHour;
 }
+
+function triggerAlarm() {
+	if (Notification.permission !== "granted") {
+		return;
+	}
+	let nodeNames = [];
+	let eorzeaHours = getEorzeaHour();
+	if (eorzeaHours % 2 == 1) { eorzeaHours ++; }
+	if (trackedNodes[eorzeaHours].size === 0) {
+		return;
+	}
+
+	trackedNodes[eorzeaHours].forEach(nodeName => {
+		nodeNames.push(GATHERING_NODES[nodeName].region);
+	});
+
+	const middayPeriod = (eorzeaMinutes > (MINUTES_IN_DAY / 2)) ? 'PM' : 'AM';
+	const message = `${eorzeaHours}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
+	console.log(message);
+
+	let notification = new Notification(message);
+	let audioNotify = new Audio('./media/audio/FFXIV_Linkshell_Transmission.mp3');
+	setTimeout(() => {notification.close()}, 10000);
+	audioNotify.play();
+}
+
+/**********************************************************************************************************************
+ * Node queuing
+ */
+function enqueueNode(event) {
+	const nodeCard = $(event.target).parent().parent().parent();
+	const nodeName = nodeCard.attr('dataName');
+	const gatheringNode = GATHERING_NODES[nodeName];
+	trackedNodes[gatheringNode.time].add(nodeName);
+
+	moveCardToQueue(nodeCard, `hour-${gatheringNode.time}`, event.target);
+
+	rtAlarmSeconds = getRtSecondsToNextNode();
+	processRtTimer();
+	saveData();
+}
+
+function dequeueNode(event) {
+	const nodeCard = $(event.target).parent().parent().parent();
+	const nodeName = nodeCard.attr('dataName');
+	const hour = GATHERING_NODES[nodeName].time;
+	trackedNodes[hour].delete(nodeName);
+
+	moveCardToList(nodeCard, event.target);
+
+	rtAlarmSeconds = getRtSecondsToNextNode();
+	processRtTimer();
+	saveData();
+}
+
+/**********************************************************************************************************************
+ * Eorzea Timer 
+ */
+function processTick() {
+	advanceEorzeaTime();
+	displayEorzeaTime();
+}
+
+function advanceEorzeaTime() {
+	if(debugMode) {
+		eorzeaMinutes ++;
+	}
+	else {
+		eorzeaMinutes = parseInt(Date.now() / 1000 / EORZEA_MINUTE_SCALE) % MINUTES_IN_DAY;
+	}
+
+	if (eorzeaMinutes % 120 == 0) {
+		rotateQueueDisplay();
+		rtAlarmSeconds = getRtSecondsToNextNode();
+		displayRtAlarmTime();
+	}
+}
+
+function getEorzeaHour() {
+	let hours = parseInt(eorzeaMinutes / 60) % 12;
+	return (hours === 0) ? 12 : hours;
+}
+
+/**********************************************************************************************************************
+ * Real-time Timer 
+ */
 
 function processRtTimer() {
-	$(`#rt-timer`).html(`${parseInt(rtAlarmSeconds/60)}:${String(rtAlarmSeconds % 60).padStart(2, "0")}`);
-	if (rtAlarmSeconds >= 0) { rtAlarmSeconds --; }
+	let delta = Date.now() - rtExpected;
+	rtExpected += RT_INTERVAL;
 
-	if (alarmEnabled && rtAlarmSeconds === 10) {
-		let nodeNames = [];
-		const eorzeaHours = getEorzeaHours();
-		trackedNodes[eorzeaHours + 1].forEach(nodeName => {
-			nodeNames.push(GATHERING_NODES[nodeName].region);
-		})
-		if (nodeNames.length > 0) {
-			const message = `${eorzeaHours + 1}:00 ${middayPeriod} ${nodeNames.toString().replaceAll(',', ', ')} nodes are about to pop!`;
-
-			if (Notification.permission === "granted") {
-				let notification = new Notification(message);
-				let audioNotify = new Audio('./media/audio/FFXIV_Linkshell_Transmission.mp3');
-				setTimeout(() => {notification.close()}, 10000);
-				audioNotify.play();
-			}
-			console.log(message);
-		}
+	if (rtAlarmSeconds === 0) {
+		setTimeout(processRtTimer, RT_INTERVAL - delta);
+		return;
 	}
+
+	rtAlarmSeconds --;
+	displayRtAlarmTime();
+
+	if (alarmEnabled === false || rtAlarmSeconds !== 10) {
+		setTimeout(processRtTimer, RT_INTERVAL - delta);
+		return;
+	}
+
+	triggerAlarm();
 }
 
+function getRtSecondsToNextNode() {
+	const currentHour = parseInt(eorzeaMinutes / 60) % 12;
+	const currentMinutes = (eorzeaMinutes % 60);
+	let nextHour = getNextCardHour();
+	nextHour = (nextHour <= currentHour) ? nextHour + 12 : nextHour;
+	const rtMinutes = (nextHour - currentHour - 1) * 60 + (60 - currentMinutes);
+	return parseInt(rtMinutes * EORZEA_MINUTE_SCALE);
+}
+
+/**********************************************************************************************************************
+ * Utility
+ */
 function saveData() {
 	let nodes = [];
 	for(const time in trackedNodes) {
@@ -249,8 +327,35 @@ function saveData() {
 	localStorage.setItem('selectedNodes', nodes);
 }
 
-function getEorzeaHours() {
-	return parseInt(eorzeaMinutes / 60) % 12;
+/**********************************************************************************************************************
+ * Debug functions
+ */
+let debugMode = false;
+
+function debug_stopTimers() {
+	clearInterval(trackerTimer);
+	clearInterval(rtTimer);
+}
+
+function debug_startTimers() {
+	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
+	rtTimer = setTimeout(processRtTimer, RT_INTERVAL);
+}
+
+function setEorzeaTime(hours, minutes) {
+	if(debugMode == false) {
+		console.log(`Debug mode is not enabled, setting time won't work!`);
+		return;
+	}
+	if (hours > 23 || minutes > 59) {
+		return;
+	}
+
+	eorzeaMinutes = (hours * 60) + minutes;
+	displayEorzeaTime();
+	displayRtAlarmTime();
+	alignQueueToEorzeaTime();
+	rtAlarmSeconds = getRtSecondsToNextNode();
 }
 
 initTracker();
