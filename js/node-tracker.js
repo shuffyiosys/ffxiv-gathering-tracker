@@ -58,7 +58,7 @@ function initTracker() {
 	
 	rtExpected = Date.now() + RT_INTERVAL;
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
-	rtTimer = setTimeout(processRtTimer, RT_INTERVAL);
+	rtTimer = setInterval(processRtTimer, RT_INTERVAL);
 }
 
 /**********************************************************************************************************************
@@ -155,7 +155,7 @@ function displayEorzeaTime() {
 }
 
 function displayRtAlarmTime() {
-	if (rtAlarmSeconds < -1) {
+	if (rtAlarmSeconds === -1) {
 		$(`#rt-timer`).html(`N/A`);
 	}
 	else {
@@ -188,17 +188,6 @@ function alignQueueToEorzeaTime() {
 		rotateQueueDisplay();
 		currentHour = getCurrentNodeHour();
 	}
-}
-
-function getNextCardHour() {
-	let nextCardHour = parseInt(getEorzeaHour() / 2) * 2;
-	for(let i = 0; i < $('#node-queue').children().length; i++) {
-		if ($('#node-queue').children()[i].children.length > 0) {
-			nextCardHour = parseInt($('#node-queue').children()[i].id.substr(5));
-			break;
-		}
-	}
-	return nextCardHour;
 }
 
 function triggerAlarm() {
@@ -288,19 +277,14 @@ function getEorzeaHour() {
  */
 
 function processRtTimer() {
-	let delta = Date.now() - rtExpected;
-	rtExpected += RT_INTERVAL;
-
-	if (rtAlarmSeconds === 0) {
-		setTimeout(processRtTimer, RT_INTERVAL - delta);
-		return;
+	if (rtAlarmSeconds % 35 == 0) {
+		rtAlarmSeconds = getRtSecondsToNextNode();
 	}
 
 	rtAlarmSeconds --;
 	displayRtAlarmTime();
 
 	if (alarmEnabled === false || rtAlarmSeconds !== 10) {
-		setTimeout(processRtTimer, RT_INTERVAL - delta);
 		return;
 	}
 
@@ -310,10 +294,23 @@ function processRtTimer() {
 function getRtSecondsToNextNode() {
 	const currentHour = parseInt(eorzeaMinutes / 60) % 12;
 	const currentMinutes = (eorzeaMinutes % 60);
-	let nextHour = getNextCardHour();
-	nextHour = (nextHour <= currentHour) ? nextHour + 12 : nextHour;
-	const rtMinutes = (nextHour - currentHour - 1) * 60 + (60 - currentMinutes);
-	return parseInt(rtMinutes * EORZEA_MINUTE_SCALE);
+
+	let nextHour = -1;
+	for(let i = 0; i < $('#node-queue').children().length; i++) {
+		if ($('#node-queue').children()[i].children.length > 0) {
+			nextHour = parseInt($('#node-queue').children()[i].id.substr(5));
+			break;
+		}
+	}
+
+	if (nextHour > -1) {
+		nextHour = (nextHour <= currentHour) ? nextHour + 12 : nextHour;
+		const rtMinutes = (nextHour - currentHour - 1) * 60 + (60 - currentMinutes);
+		return parseInt(rtMinutes * EORZEA_MINUTE_SCALE);
+	}
+	else {
+		return -1;
+	}
 }
 
 /**********************************************************************************************************************
@@ -339,7 +336,7 @@ function debug_stopTimers() {
 
 function debug_startTimers() {
 	trackerTimer = setInterval(processTick, EORZEA_MINUTE_MS);
-	rtTimer = setTimeout(processRtTimer, RT_INTERVAL);
+	rtTimer = setInterval(processRtTimer, RT_INTERVAL);
 }
 
 function setEorzeaTime(hours, minutes) {
