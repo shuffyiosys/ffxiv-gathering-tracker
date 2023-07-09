@@ -71,6 +71,16 @@ body {
 
 .node-material {
 	margin-bottom: 0.25em;
+	display: flex;
+	flex-direction: row;
+}
+
+.node-material > div{
+	margin-right: 10px;
+}
+
+.node-material > div:first-child {
+	width: 220px;
 }
 
 #node-queue > div.spacer{

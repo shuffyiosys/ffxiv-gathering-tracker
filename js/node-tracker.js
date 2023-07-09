@@ -78,17 +78,17 @@ function generateNodeCard(nodeName, idx=0) {
 	let materialList = '';
 	node.materials.forEach(material => {
 		let rewardHtml = '';
-		let materialHtml = `<img src="./media/img/${material.toLowerCase().replaceAll(" ", "_")}.png" alt="${material} icon" height="32px"> ${material}`
+		let materialHtml = `<div><img src="./media/img/${material.toLowerCase().replaceAll(" ", "_")}.png" alt="${material} icon" height="32px"> ${material}</div>`
 
 		if (material in COLLECTABLES === true) { 
 			let scripText = COLLECTABLES[material].type;
 			let scripIconName = scripText.toLowerCase().replaceAll(' ', '_')
-			rewardHtml = `<img src="./media/img/${scripIconName}_gatherers_scrip.png" alt="${scripText} Gatherer's Scrip icon" height="32px"> x${COLLECTABLES[material].amount} | `
+			rewardHtml = `<div><img src="./media/img/${scripIconName}_gatherers_scrip.png" alt="${scripText} Gatherer's Scrip icon" height="32px"> x${COLLECTABLES[material].amount}</div>`
 		}
 		else if (material in LEGENDARY_MATS) {
-			rewardHtml = `Perception: ${LEGENDARY_MATS[material].perception} | `;
+			rewardHtml = `<div>Perception: ${LEGENDARY_MATS[material].perception}</div>`;
 		}
-		materialList += `<div class="node-material">${rewardHtml}${materialHtml}</div>`
+		materialList += `<div class="node-material">${materialHtml}${rewardHtml}</div>`
 	});
 
 	const gatheringIcon = `<img src="./media/img/${node.nodeType.toLowerCase()}.png" alt="${node.nodeType} icon">`;
@@ -155,7 +155,7 @@ function displayEorzeaTime() {
 }
 
 function displayRtAlarmTime() {
-	if (rtAlarmSeconds === -1) {
+	if (rtAlarmSeconds <= -1) {
 		$(`#rt-timer`).html(`N/A`);
 	}
 	else {
@@ -281,7 +281,9 @@ function processRtTimer() {
 		rtAlarmSeconds = getRtSecondsToNextNode();
 	}
 
-	rtAlarmSeconds --;
+	if (rtAlarmSeconds > -1) {
+		rtAlarmSeconds --;
+	}
 	displayRtAlarmTime();
 
 	if (alarmEnabled === false || rtAlarmSeconds !== 10) {
